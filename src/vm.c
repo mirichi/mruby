@@ -377,12 +377,22 @@ argnum_error(mrb_state *mrb, int num)
 
 #define INIT_DISPATCH JUMP; return mrb_nil_value();
 #define CASE(op) L_ ## op:
-#define NEXT i=*++pc; goto *optable[GET_OPCODE(i)]
-#define JUMP i=*pc; goto *optable[GET_OPCODE(i)]
+#define NEXT pc++; i=pc->iseq; asm(""); goto *(pc->addr)
+#define JUMP i=pc->iseq;asm(""); goto *(pc->addr)
 
 #define END_DISPATCH
 
 #endif
+
+#define MAKE_DTCODE \
+  if (!irep->dtcode) {\
+    int index;\
+    irep->dtcode = (mrb_dtcode *)mrb_malloc(mrb, sizeof(mrb_dtcode) * irep->ilen);\
+    for(index = 0; index < irep->ilen; index++) {\
+      irep->dtcode[index].addr = optable[GET_OPCODE(irep->iseq[index])];\
+      irep->dtcode[index].iseq = irep->iseq[index];\
+    }\
+  }
 
 mrb_value mrb_gv_val_get(mrb_state *mrb, mrb_sym sym);
 void mrb_gv_val_set(mrb_state *mrb, mrb_sym sym, mrb_value val);
@@ -394,7 +404,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
 {
   /* assert(mrb_proc_cfunc_p(proc)) */
   mrb_irep *irep = proc->body.irep;
-  mrb_code *pc = irep->iseq;
+  mrb_dtcode *pc;
   mrb_value *pool = irep->pool;
   mrb_sym *syms = irep->syms;
   mrb_value *regs = NULL;
@@ -428,6 +438,8 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
   };
 #endif
 
+  MAKE_DTCODE;
+  pc = irep->dtcode;
 
   if (setjmp(c_jmp) == 0) {
     mrb->jmp = &c_jmp;
@@ -617,7 +629,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       if (mrb->rsize <= mrb->ci->ridx) {
         if (mrb->rsize == 0) mrb->rsize = 16;
         else mrb->rsize *= 2;
-        mrb->rescue = (mrb_code **)mrb_realloc(mrb, mrb->rescue, sizeof(mrb_code*) * mrb->rsize);
+        mrb->rescue = (mrb_dtcode **)mrb_realloc(mrb, mrb->rescue, sizeof(mrb_dtcode*) * mrb->rsize);
       }
       mrb->rescue[mrb->ci->ridx++] = pc + GETARG_sBx(i);
       NEXT;
@@ -743,6 +755,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         /* setup environment for calling method */
         proc = mrb->ci->proc = m;
         irep = m->body.irep;
+
+        MAKE_DTCODE;
+
         pool = irep->pool;
         syms = irep->syms;
         ci->nregs = irep->nregs;
@@ -753,7 +768,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
           stack_extend(mrb, irep->nregs,  ci->argc+2);
         }
         regs = mrb->stack;
-        pc = irep->iseq;
+        pc = irep->dtcode;
         JUMP;
       }
     }
@@ -805,6 +820,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
 	  mrb->stack[0] = mrb_nil_value();
 	  goto L_RETURN;
 	}
+        MAKE_DTCODE;
         pool = irep->pool;
         syms = irep->syms;
         ci->nregs = irep->nregs;
@@ -816,7 +832,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         }
         regs = mrb->stack;
         regs[0] = m->env->stack[0];
-        pc = m->body.irep->iseq;
+        pc = m->body.irep->dtcode;
         JUMP;
       }
     }
@@ -877,6 +893,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         /* setup environment for calling method */
         ci->proc = m;
         irep = m->body.irep;
+
+        MAKE_DTCODE;
+
         pool = irep->pool;
         syms = irep->syms;
         ci->nregs = irep->nregs;
@@ -887,7 +906,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
           stack_extend(mrb, irep->nregs,  ci->argc+2);
         }
         regs = mrb->stack;
-        pc = irep->iseq;
+        pc = irep->dtcode;
         JUMP;
       }
     }
@@ -1151,6 +1170,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       else {
         /* setup environment for calling method */
         irep = m->body.irep;
+
+        MAKE_DTCODE;
+
         pool = irep->pool;
         syms = irep->syms;
         if (ci->argc < 0) {
@@ -1160,7 +1182,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
           stack_extend(mrb, irep->nregs,  ci->argc+2);
         }
         regs = mrb->stack;
-        pc = irep->iseq;
+        pc = irep->dtcode;
       }
       JUMP;
     }
@@ -1568,12 +1590,15 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       }
       else {
         irep = p->body.irep;
+
+        MAKE_DTCODE;
+
         pool = irep->pool;
         syms = irep->syms;
         stack_extend(mrb, irep->nregs, 1);
 	ci->nregs = irep->nregs;
         regs = mrb->stack;
-        pc = irep->iseq;
+        pc = irep->dtcode;
         JUMP;
       }
     }

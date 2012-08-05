@@ -196,13 +196,18 @@ typedef void* (*mrb_allocf) (struct mrb_state *mrb, void*, size_t);
 #define ruby_debug   (mrb_nil_value())
 #define ruby_verbose (mrb_nil_value())
 
+typedef struct mrb_dtcode {
+  mrb_code iseq;
+  void *addr;
+} mrb_dtcode;
+
 typedef struct {
   mrb_sym mid;
   struct RProc *proc;
   int stackidx;
   int nregs;
   int argc;
-  mrb_code *pc;
+  mrb_dtcode *pc;
   int acc;
   struct RClass *target_class;
   int ridx;
@@ -227,7 +232,7 @@ typedef struct mrb_state {
   mrb_callinfo *ci;
   mrb_callinfo *cibase, *ciend;
 
-  mrb_code **rescue;
+  mrb_dtcode **rescue;
   int rsize;
   struct RProc **ensure;
   int esize;
