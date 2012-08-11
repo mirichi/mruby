@@ -2050,6 +2050,7 @@ scope_finish(codegen_scope *s, int idx)
 
   irep->nlocals = s->nlocals;
   irep->nregs = s->nregs;
+  irep->ct_func = NULL;
 
   s->mrb->arena_idx = s->ai;
   mrb_pool_close(s->mpool);

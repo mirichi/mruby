@@ -21,6 +21,7 @@ typedef struct mrb_irep {
   mrb_code *iseq;
   mrb_value *pool;
   mrb_sym *syms;
+  mrb_value (*ct_func)(void);
 
   int ilen, plen, slen;
 } mrb_irep;

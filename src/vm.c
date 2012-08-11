@@ -375,10 +375,12 @@ argnum_error(mrb_state *mrb, int num)
 
 #else
 
-#define INIT_DISPATCH JUMP; return mrb_nil_value();
-#define CASE(op) L_ ## op:
-#define NEXT i=*++pc; goto *optable[GET_OPCODE(i)]
-#define JUMP i=*pc; goto *optable[GET_OPCODE(i)]
+#define INIT_DISPATCH i = *pc; return irep->ct_func();
+#define CASE(op) L_ ## op:\
+asm("subl $40, %esp");
+
+#define NEXT i=*++pc; asm("addl $40, %esp;ret $0"); goto *optable[GET_OPCODE(i)]
+#define JUMP i=*pc; asm("addl $40, %esp;ret $0"); goto *optable[GET_OPCODE(i)]
 
 #define END_DISPATCH
 
@@ -426,6 +428,66 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
     &&L_OP_METHOD, &&L_OP_SCLASS, &&L_OP_TCLASS,
     &&L_OP_DEBUG, &&L_OP_STOP, &&L_OP_ERR,
   };
+
+#define MAKE_CT_FUNC \
+  if (!irep->ct_func) {\
+    int index;\
+    unsigned char *data = mrb_malloc(mrb, irep->ilen * 11 + 20);\
+    unsigned char **adr_buf = mrb_malloc(mrb, irep->ilen * sizeof(int));\
+    unsigned char *return_adr;\
+    irep->ct_func = (void*)data;\
+    for (index = 0; index < irep->ilen; index++) {\
+      adr_buf[index] = data;\
+      *data = 0xe8; /* call rel32 */ \
+      *(int**)(data + 1) = (int*)((unsigned char*)optable[GET_OPCODE(irep->iseq[index])] - (data + 5));\
+      data += 5;\
+      switch GET_OPCODE(irep->iseq[index]) {\
+      case OP_JMP:\
+      case OP_RETURN:\
+        *data = 0xe9; /* jmp rel32 */ \
+        data += 5;\
+        break;\
+      case OP_JMPIF:\
+        *data = 0x0f; /* jne rel32 */ \
+        *(data + 1) = 0x85;\
+        data += 6;\
+        break;\
+      case OP_JMPNOT:\
+        *data = 0x0f; /* je rel32 */ \
+        *(data + 1) = 0x86;\
+        data += 6;\
+        break;\
+      case OP_ENTER:\
+        *data = 0x05; /* addl imm32, eax */ \
+        *(int**)(data + 1) = (int*)(data + 7);\
+        data += 5;\
+        *data = 0xff; /* jmp *eax */ \
+        *(data + 1) = 0xe0;\
+        data += 2;\
+        break;\
+      }\
+    }\
+    return_adr = data;\
+    *data++ = 0xc2; /* ret $04 */\
+    *data++ = 0x04;\
+    *data++ = 0x00;\
+    for (index = 0; index < irep->ilen; index++) {\
+      switch GET_OPCODE(irep->iseq[index]) {\
+      case OP_JMP:\
+        *(int**)(adr_buf[index] + 6) = (int*)(adr_buf[index + GETARG_sBx(irep->iseq[index])] - (adr_buf[index] + 10));\
+        break;\
+      case OP_JMPIF:\
+      case OP_JMPNOT:\
+        *(int**)(adr_buf[index] + 7) = (int*)(adr_buf[index + GETARG_sBx(irep->iseq[index])] - (adr_buf[index] + 11));\
+        break;\
+      case OP_RETURN:\
+        *(int**)(adr_buf[index] + 6) = (int*)(return_adr - (adr_buf[index] + 10));\
+        break;\
+      }\
+    }\
+    mrb_free(mrb, adr_buf);\
+  }
+
 #endif
 
 
@@ -441,6 +503,8 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
   mrb->ci->proc = proc;
   mrb->ci->nregs = irep->nregs + 2;
   regs = mrb->stack;
+
+  MAKE_CT_FUNC
 
   INIT_DISPATCH {
     CASE(OP_NOP) {
@@ -595,20 +659,35 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
     }
 
     CASE(OP_JMPIF) {
+      char tt0 = regs[GETARG_A(i)].tt;
+
       /* A sBx  if R(A) pc+=sBx */
       if (mrb_test(regs[GETARG_A(i)])) {
         pc += GETARG_sBx(i);
-        JUMP;
+        i=*pc;
+      } 
+      else {
+        i=*++pc;
       }
+      asm("addl $40, %esp;");
+      asm("cmpb $0, %0" : : "r" (tt0));
+      asm("ret $0");
       NEXT;
     }
 
     CASE(OP_JMPNOT) {
+      char tt0 = regs[GETARG_A(i)].tt;
       /* A sBx  if R(A) pc+=sBx */
       if (!mrb_test(regs[GETARG_A(i)])) {
         pc += GETARG_sBx(i);
-        JUMP;
+        i=*pc;
+      } 
+      else {
+        i=*++pc;
       }
+      asm("addl $40, %esp;");
+      asm("cmpb $0, %0" : : "r" (tt0));
+      asm("ret $0");
       NEXT;
     }
 
@@ -681,8 +760,10 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       NEXT;
     }
 
+    CASE(OP_SEND)
   L_SEND:
-    CASE(OP_SEND) {
+    {
+      
       /* A B C  R(A) := call(R(A),Sym(B),R(A+1),... ,R(A+C-1)) */
       int a = GETARG_A(i);
       int n = GETARG_C(i);
@@ -754,6 +835,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         }
         regs = mrb->stack;
         pc = irep->iseq;
+        MAKE_CT_FUNC
+        i = *pc;
+        irep->ct_func();
         JUMP;
       }
     }
@@ -817,6 +901,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         regs = mrb->stack;
         regs[0] = m->env->stack[0];
         pc = m->body.irep->iseq;
+        MAKE_CT_FUNC
+        i = *pc;
+        irep->ct_func();
         JUMP;
       }
     }
@@ -888,6 +975,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         }
         regs = mrb->stack;
         pc = irep->iseq;
+        MAKE_CT_FUNC
+        i = *pc;
+        irep->ct_func();
         JUMP;
       }
     }
@@ -961,6 +1051,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       mrb_value *argv = regs+1;
       int len = m1 + o + r + m2;
       mrb_value *blk = &argv[argc < 0 ? 1 : argc];
+      int result;
 
       if (argc < 0) {
         struct RArray *ary = mrb_ary_ptr(regs[1]);
@@ -988,9 +1079,14 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         if (r) {                  /* r */
           regs[m1+o+1] = mrb_ary_new_capa(mrb, 0);
         }
-	if (o == 0) pc++;
-	else
+        if (o == 0) {
+          pc++;
+          result = 0;
+        }
+        else {
 	  pc += argc - m1 - m2 + 1;
+          result = (argc - m1 - m2) * 10;
+        }
       }
       else {
         memmove(&regs[1], argv, sizeof(mrb_value)*(m1+o)); /* m1 + o */
@@ -1000,7 +1096,12 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         memmove(&regs[m1+o+r+1], &argv[argc-m2], sizeof(mrb_value)*m2);
         regs[len+1] = *blk; /* move block */
         pc += o + 1;
+        result = o * 10;
       }
+      i = *pc;
+      asm("movl %0, %%eax;" : : "r" (result) : "%eax");
+      asm("addl $40, %esp;");
+      asm("ret $0");
       JUMP;
     }
 
@@ -1161,6 +1262,10 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         }
         regs = mrb->stack;
         pc = irep->iseq;
+
+        MAKE_CT_FUNC
+        i = *pc;
+        irep->ct_func();
       }
       JUMP;
     }
@@ -1574,6 +1679,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
 	ci->nregs = irep->nregs;
         regs = mrb->stack;
         pc = irep->iseq;
+        MAKE_CT_FUNC
+        i = *pc;
+        irep->ct_func();
         JUMP;
       }
     }

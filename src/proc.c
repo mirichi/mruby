@@ -155,6 +155,7 @@ mrb_init_proc(mrb_state *mrb)
   call_irep->flags = MRB_IREP_NOFREE;
   call_irep->iseq = call_iseq;
   call_irep->ilen = 1;
+  call_irep->ct_func = NULL;
 
   mrb->proc_class = mrb_define_class(mrb, "Proc", mrb->object_class);
   MRB_SET_INSTANCE_TT(mrb->proc_class, MRB_TT_PROC);

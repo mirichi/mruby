@@ -353,6 +353,7 @@ read_rite_irep_record(mrb_state *mrb, unsigned char *src, mrb_irep *irep, uint32
     return MRB_DUMP_INVALID_IREP;
   src += offset;
 
+  irep->ct_func = NULL;
   //Binary Data Section
   //ISEQ BLOCK
   pStart = src;
