@@ -377,10 +377,13 @@ argnum_error(mrb_state *mrb, int num)
 
 #define INIT_DISPATCH i = *pc; goto *irep->ct_func;
 #define CASE(op) L_ ## op:\
-asm("subl $40, %esp");
+asm("subl $80, %esp");
 
-#define NEXT i=*++pc; asm("addl $40, %esp;ret $0"); goto *optable[GET_OPCODE(i)]
-#define JUMP i=*pc; asm("addl $40, %esp;ret $0"); goto *optable[GET_OPCODE(i)]
+#define CASE2(op) L_ ## op:
+#define NEXT i=*++pc; asm("addl $80, %esp;ret $0"); goto *optable[GET_OPCODE(i)]
+#define JUMP i=*pc; asm("addl $80, %esp;ret $0"); goto *optable[GET_OPCODE(i)]
+#define NEXT2 i=*++pc; asm("ret $0"); goto *optable[GET_OPCODE(i)]
+#define JUMP2 i=*pc; asm("ret $0"); goto *optable[GET_OPCODE(i)]
 
 #define END_DISPATCH
 
@@ -432,7 +435,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
 #define MAKE_CT_FUNC \
   if (!irep->ct_func) {\
     int index;\
-    unsigned char *data = mrb_malloc(mrb, irep->ilen * 11 + 20);\
+    unsigned char *data = mrb_malloc(mrb, irep->ilen * 12 + 20);\
     irep->adr_buf = mrb_malloc(mrb, irep->ilen * sizeof(int));\
     unsigned char *return_adr;\
     irep->ct_func = (void*)data;\
@@ -512,12 +515,12 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
   MAKE_CT_FUNC
 
   INIT_DISPATCH {
-    CASE(OP_NOP) {
+    CASE2(OP_NOP) {
       /* do nothing */
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_MOVE) {
+    CASE2(OP_MOVE) {
       /* A B    R(A) := R(B) */
 #if 0
       regs[GETARG_A(i)] = regs[GETARG_B(i)];
@@ -530,31 +533,31 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
 #else
       memcpy(regs+GETARG_A(i), regs+GETARG_B(i), sizeof(mrb_value));
 #endif
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_LOADL) {
+    CASE2(OP_LOADL) {
       /* A Bx   R(A) := Pool(Bx) */
       regs[GETARG_A(i)] = pool[GETARG_Bx(i)];
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_LOADI) {
+    CASE2(OP_LOADI) {
       /* A Bx   R(A) := sBx */
       SET_INT_VALUE(regs[GETARG_A(i)], GETARG_sBx(i));
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_LOADSYM) {
+    CASE2(OP_LOADSYM) {
       /* A B    R(A) := Sym(B) */
       SET_SYM_VALUE(regs[GETARG_A(i)], syms[GETARG_Bx(i)]);
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_LOADSELF) {
+    CASE2(OP_LOADSELF) {
       /* A      R(A) := self */
       regs[GETARG_A(i)] = mrb->stack[0];
-      NEXT;
+      NEXT2;
     }
 
     CASE(OP_LOADT) {
@@ -657,10 +660,10 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       NEXT;
     }
 
-    CASE(OP_JMP) {
+    CASE2(OP_JMP) {
       /* sBx    pc+=sBx */
       pc += GETARG_sBx(i);
-      JUMP;
+      JUMP2;
     }
 
     CASE(OP_JMPIF) {
@@ -674,10 +677,10 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       else {
         i=*++pc;
       }
-      asm("addl $40, %esp;");
+      asm("addl $80, %esp;");
       asm("cmpb $0, %0" : : "r" (tt0));
       asm("ret $0");
-      NEXT;
+      NEXT2;
     }
 
     CASE(OP_JMPNOT) {
@@ -690,10 +693,10 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       else {
         i=*++pc;
       }
-      asm("addl $40, %esp;");
+      asm("addl $80, %esp;");
       asm("cmpb $0, %0" : : "r" (tt0));
       asm("ret $0");
-      NEXT;
+      NEXT2;
     }
 
     CASE(OP_ONERR) {
@@ -707,25 +710,26 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       NEXT;
     }
 
-    CASE(OP_RESCUE) {
+    CASE2(OP_RESCUE) {
       /* A      R(A) := exc; clear(exc) */
       SET_OBJ_VALUE(regs[GETARG_A(i)],mrb->exc);
       mrb->exc = 0;
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_POPERR) {
+    CASE2(OP_POPERR) {
       int a = GETARG_A(i);
 
       while (a--) {
         mrb->ci->ridx--;
       }
-      NEXT;
+      NEXT2;
     }
 
     CASE(OP_RAISE) {
       /* A      raise(R(A)) */
       mrb->exc = (struct RObject*)mrb_object(regs[GETARG_A(i)]);
+      asm("addl $84, %esp;");
       goto L_RAISE;
     }
 
@@ -757,12 +761,12 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       NEXT;
     }
 
-    CASE(OP_LOADNIL) {
+    CASE2(OP_LOADNIL) {
       /* A B    R(A) := nil */
       int a = GETARG_A(i);
 
       SET_NIL_VALUE(regs[a]);
-      NEXT;
+      NEXT2;
     }
 
     CASE(OP_SEND)
@@ -794,7 +798,6 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
           n++;
         }
       }
-
       /* push callinfo */
       ci = cipush(mrb);
       ci->mid = mid;
@@ -824,9 +827,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         regs = mrb->stack = mrb->stbase + ci->stackidx;
         cipop(mrb);
         i = *++pc;
-        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
-        asm("addl $40, %esp;");
-        asm("ret $0");
+//        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
+        asm("addl $84, %esp;");
+        goto *irep->adr_buf[pc - irep->iseq];
         NEXT;
       }
       else {
@@ -846,9 +849,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         pc = irep->iseq;
         MAKE_CT_FUNC
         i = *pc;
-        asm("movl %0, %%eax;" : : "r" (irep->ct_func) : "%eax");
-        asm("addl $40, %esp;");
-        asm("ret $0");
+//        asm("movl %0, %%eax;" : : "r" (irep->ct_func) : "%eax");
+        asm("addl $84, %esp;");
+        goto *irep->ct_func;
         JUMP;
       }
     }
@@ -891,9 +894,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         regs = mrb->stack = mrb->stbase + ci->stackidx;
         cipop(mrb);
         i = *++pc;
-        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
-        asm("addl $40, %esp;");
-        asm("ret $0");
+//        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
+        asm("addl $84, %esp;");
+        goto *irep->adr_buf[pc - irep->iseq];
         NEXT;
       }
       else {
@@ -918,9 +921,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         pc = m->body.irep->iseq;
         MAKE_CT_FUNC
         i = *pc;
-        asm("movl %0, %%eax;" : : "r" (irep->ct_func) : "%eax");
-        asm("addl $40, %esp;");
-        asm("ret $0");
+//        asm("movl %0, %%eax;" : : "r" (irep->ct_func) : "%eax");
+        asm("addl $84, %esp;");
+        goto *irep->ct_func;
         JUMP;
       }
     }
@@ -973,9 +976,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         regs = mrb->stack = mrb->stbase + ci->stackidx;
         cipop(mrb);
         i = *++pc;
-        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
-        asm("addl $40, %esp;");
-        asm("ret $0");
+//        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
+        asm("addl $84, %esp;");
+        goto *irep->adr_buf[pc - irep->iseq];
         NEXT;
       }
       else {
@@ -998,9 +1001,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         pc = irep->iseq;
         MAKE_CT_FUNC
         i = *pc;
-        asm("movl %0, %%eax;" : : "r" (irep->ct_func) : "%eax");
-        asm("addl $40, %esp;");
-        asm("ret $0");
+//        asm("movl %0, %%eax;" : : "r" (irep->ct_func) : "%eax");
+        asm("addl $84, %esp;");
+        goto *irep->ct_func;
         JUMP;
       }
     }
@@ -1123,7 +1126,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       }
       i = *pc;
       asm("movl %0, %%eax;" : : "r" (result) : "%eax");
-      asm("addl $40, %esp;");
+      asm("addl $80, %esp;");
       asm("ret $0");
       JUMP;
     }
@@ -1174,6 +1177,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         syms = irep->syms;
         regs = mrb->stack = mrb->stbase + ci[1].stackidx;
         pc = mrb->rescue[--ci->ridx];
+        i = *pc;
         goto *irep->adr_buf[pc - irep->iseq];
       }
       else {
@@ -1217,7 +1221,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         if (acc < 0) {
           mrb->jmp = prev_jmp;
           asm("movl %0, %%eax;" : : "r" (&&L_CT_RETURN) : "%eax");
-          asm("addl $40, %esp;");
+          asm("addl $80, %esp;");
           asm("ret $0");
     L_CT_RETURN:
           return v;
@@ -1230,9 +1234,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
 
         regs[acc] = v;
         i = *pc;
-        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
-        asm("addl $40, %esp;");
-        asm("ret $0");
+//        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
+        asm("addl $84, %esp;");
+        goto *irep->adr_buf[pc - irep->iseq];
       }
       JUMP;
     }
@@ -1297,9 +1301,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
 
         MAKE_CT_FUNC
         i = *pc;
-        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
-        asm("addl $40, %esp;");
-        asm("ret $0");
+//        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
+        asm("addl $84, %esp;");
+        goto *irep->adr_buf[pc - irep->iseq];
         
       }
       JUMP;
@@ -1389,7 +1393,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       NEXT;
     }
 
-    CASE(OP_ADDI) {
+    CASE2(OP_ADDI) {
       /* A B C  R(A) := R(A)+C (Syms[B]=:+)*/
       int a = GETARG_A(i);
 
@@ -1405,12 +1409,13 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
 	SET_NIL_VALUE(regs[a+2]);
         SET_INT_VALUE(regs[a+1], GETARG_C(i));
         i = MKOP_ABC(OP_SEND, a, GETARG_B(i), 1);
+        asm("subl $80, %esp;");\
         goto L_SEND;
       }
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_SUBI) {
+    CASE2(OP_SUBI) {
       /* A B C  R(A) := R(A)-C (Syms[B]=:+)*/
       int a = GETARG_A(i);
 
@@ -1426,9 +1431,10 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
 	SET_NIL_VALUE(regs[a+2]);
         SET_INT_VALUE(regs[a+1], GETARG_C(i));
         i = MKOP_ABC(OP_SEND, a, GETARG_B(i), 1);
+        asm("subl $80, %esp;");\
         goto L_SEND;
       }
-      NEXT;
+      NEXT2;
     }
 
 #define OP_CMP_BODY(op,v1,v2) do {\
@@ -1459,38 +1465,39 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
   default:\
     SET_NIL_VALUE(regs[a+2]);\
     i = MKOP_ABC(OP_SEND, a, GETARG_B(i), GETARG_C(i));\
+    asm("subl $80, %esp;");\
     goto L_SEND;\
   }\
 } while (0)
 
-    CASE(OP_EQ) {
+    CASE2(OP_EQ) {
       /* A B C  R(A) := R(A)<R(A+1) (Syms[B]=:<,C=1)*/
       OP_CMP(==);
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_LT) {
+    CASE2(OP_LT) {
       /* A B C  R(A) := R(A)<R(A+1) (Syms[B]=:<,C=1)*/
       OP_CMP(<);
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_LE) {
+    CASE2(OP_LE) {
       /* A B C  R(A) := R(A)<R(A+1) (Syms[B]=:<,C=1)*/
       OP_CMP(<=);
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_GT) {
+    CASE2(OP_GT) {
       /* A B C  R(A) := R(A)<R(A+1) (Syms[B]=:<,C=1)*/
       OP_CMP(>);
-      NEXT;
+      NEXT2;
     }
 
-    CASE(OP_GE) {
+    CASE2(OP_GE) {
       /* A B C  R(A) := R(A)<R(A+1) (Syms[B]=:<,C=1)*/
       OP_CMP(>=);
-      NEXT;
+      NEXT2;
     }
 
     CASE(OP_ARRAY) {
@@ -1705,9 +1712,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         regs = mrb->stack = mrb->stbase + ci->stackidx;
         cipop(mrb);
         i = *++pc;
-        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
-        asm("addl $40, %esp;");
-        asm("ret $0");
+//        asm("movl %0, %%eax;" : : "r" (irep->adr_buf[pc - irep->iseq]) : "%eax");
+        asm("addl $84, %esp;");
+        goto *irep->adr_buf[pc - irep->iseq];
         NEXT;
       }
       else {
@@ -1720,9 +1727,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         pc = irep->iseq;
         MAKE_CT_FUNC
         i = *pc;
-        asm("movl %0, %%eax;" : : "r" (irep->ct_func) : "%eax");
-        asm("addl $40, %esp;");
-        asm("ret $0");
+//        asm("movl %0, %%eax;" : : "r" (irep->ct_func) : "%eax");
+        asm("addl $84, %esp;");
+        goto *irep->ct_func;
         JUMP;
       }
     }
@@ -1774,7 +1781,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       NEXT;
     }
 
-    CASE(OP_STOP) {
+    CASE2(OP_STOP) {
       /*        stop VM */
     L_STOP:
       {
@@ -1797,6 +1804,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       mrb_value exc = mrb_exc_new3(mrb, E_RUNTIME_ERROR, msg);
 
       mrb->exc = (struct RObject*)mrb_object(exc);
+      asm("addl $84, %esp;");
       goto L_RAISE;
     }
   }
