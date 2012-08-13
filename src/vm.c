@@ -680,7 +680,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       asm("addl $80, %esp;");
       asm("cmpb $0, %0" : : "r" (tt0));
       asm("ret $0");
-      NEXT2;
+      //NEXT2;
     }
 
     CASE(OP_JMPNOT) {
@@ -696,7 +696,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       asm("addl $80, %esp;");
       asm("cmpb $0, %0" : : "r" (tt0));
       asm("ret $0");
-      NEXT2;
+//      NEXT2;
     }
 
     CASE(OP_ONERR) {
@@ -1077,7 +1077,6 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       mrb_value *argv = regs+1;
       int len = m1 + o + r + m2;
       mrb_value *blk = &argv[argc < 0 ? 1 : argc];
-      int result;
 
       if (argc < 0) {
         struct RArray *ary = mrb_ary_ptr(regs[1]);
@@ -1107,11 +1106,9 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         }
         if (o == 0) {
           pc++;
-          result = 0;
         }
         else {
 	  pc += argc - m1 - m2 + 1;
-          result = (argc - m1 - m2) * 10;
         }
       }
       else {
@@ -1122,13 +1119,13 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         memmove(&regs[m1+o+r+1], &argv[argc-m2], sizeof(mrb_value)*m2);
         regs[len+1] = *blk; /* move block */
         pc += o + 1;
-        result = o * 10;
       }
       i = *pc;
-      asm("movl %0, %%eax;" : : "r" (result) : "%eax");
-      asm("addl $80, %esp;");
-      asm("ret $0");
-      JUMP;
+      asm("addl $84, %esp;");
+//      asm("movl %0, %%eax;" : : "r" (result) : "%eax");
+      goto *irep->adr_buf[pc - irep->iseq];
+//      asm("ret $0");
+//      JUMP;
     }
 
     CASE(OP_KARG) {
