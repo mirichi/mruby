@@ -10,6 +10,7 @@
   */
 # include <limits.h>
 #endif
+#include <windows.h>
 #include <string.h>
 #include "mruby.h"
 #include "mruby/array.h"
@@ -286,12 +287,12 @@ mrb_obj_alloc(mrb_state *mrb, enum mrb_vtype ttype, struct RClass *cls)
   struct RBasic *p;
   static const RVALUE RVALUE_zero = { { { MRB_TT_FALSE } } };
 
-#ifdef MRB_GC_STRESS
-  mrb_garbage_collect(mrb);
-#endif
+//#ifdef MRB_GC_STRESS
+//  mrb_garbage_collect(mrb);
+//#endif
   if (mrb->free_heaps == NULL) {
-    mrb_garbage_collect(mrb);
-    add_heap(mrb);
+      mrb_garbage_collect(mrb);
+      add_heap(mrb);
   }
 
   p = mrb->free_heaps->freelist;
@@ -305,7 +306,7 @@ mrb_obj_alloc(mrb_state *mrb, enum mrb_vtype ttype, struct RClass *cls)
   *(RVALUE *)p = RVALUE_zero;
   p->tt = ttype;
   p->c = cls;
-  paint_gray(p);
+  paint_white(p);
   return p;
 }
 
@@ -344,7 +345,7 @@ void
 mrb_gc_mark(mrb_state *mrb, struct RBasic *obj)
 {
   if (obj == 0) return;
-  if (!is_gray(obj)) return;
+  if (!is_white(obj)) return;
 
   paint_black(obj);
   mrb_gc_mark(mrb, (struct RBasic*)obj->c);
@@ -525,9 +526,11 @@ obj_free(mrb_state *mrb, struct RBasic *obj)
 
 static void
 mark(mrb_state *mrb)
+//static DWORD WINAPI mark( LPVOID lpParameter )
 {
   int j;
   size_t i, e;
+//  mrb_state *mrb = (mrb_state *)lpParameter;
 
   mrb_gc_mark_gv(mrb);
   /* mark arena */
@@ -554,6 +557,7 @@ mark(mrb_state *mrb)
       }
     }
   }
+//  ExitThread( 0 );
 }
 
 static void
@@ -574,9 +578,10 @@ sweep(mrb_state *mrb)
     RVALUE *e = p + MRB_HEAP_PAGE_SIZE;
     size_t freed = 0;
     int dead_slot = 1;
+    int full = (page->freelist == NULL);
 
     while (p<e) {
-      if (is_dead(mrb, &p->as.basic)) {
+      if (is_white(&p->as.basic) || is_dead(mrb, &p->as.basic)) {
         if (p->as.basic.tt != MRB_TT_FREE) {
           obj_free(mrb, &p->as.basic);
           p->as.free.next = page->freelist;
@@ -585,7 +590,7 @@ sweep(mrb_state *mrb)
         }
       }
       else {
-        paint_gray(&p->as.basic);
+        paint_white(&p->as.basic);
         dead_slot = 0;
       }
       p++;
@@ -601,7 +606,7 @@ sweep(mrb_state *mrb)
       page = next;
     }
     else {
-      if (freed > 0) {
+      if (full && freed > 0) {
         link_free_heap_page(mrb, page);
       }
       page = page->next;
@@ -616,7 +621,19 @@ sweep(mrb_state *mrb)
 static size_t
 gc(mrb_state *mrb)
 {
-    mrb->gc_state = GC_STATE_MARK;
+//    HANDLE hThread[4];
+//    mrb->gc_state = GC_STATE_MARK;
+
+//    hThread[0] = CreateThread(NULL, 0, &mark, mrb, 0, 0);
+//    hThread[1] = CreateThread(NULL, 0, &mark2, mrb, 0, 0);
+//    hThread[2] = CreateThread(NULL, 0, &mark, mrb, 0, 0);
+//    hThread[3] = CreateThread(NULL, 0, &mark, mrb, 0, 0);
+//    WaitForSingleObject(hThread[0], INFINITE);
+//    WaitForMultipleObjects(2, hThread, TRUE, INFINITE);
+//    CloseHandle(hThread[0]);
+//    CloseHandle(hThread[1]);
+//    CloseHandle(hThread[2]);
+//    CloseHandle(hThread[3]);
     mark(mrb);
     mrb->gc_state = GC_STATE_SWEEP;
     prepare_sweep(mrb);
@@ -629,12 +646,12 @@ void
 mrb_garbage_collect(mrb_state *mrb)
 {
   if (mrb->gc_disabled) return;
-  GC_INVOKE_TIME_REPORT("mrb_garbage_collect()");
-  GC_TIME_START;
+//  GC_INVOKE_TIME_REPORT("mrb_garbage_collect()");
+//  GC_TIME_START;
 
   gc(mrb);
 
-  GC_TIME_STOP_AND_REPORT;
+//  GC_TIME_STOP_AND_REPORT;
 }
 
 int

@@ -32,7 +32,7 @@ mrb_open_allocf(mrb_allocf f, void *ud)
   *mrb = mrb_state_zero;
   mrb->ud = ud;
   mrb->allocf = f;
-  mrb->current_white_part = MRB_GC_GRAY;
+  mrb->current_white_part = MRB_GC_WHITE;
 
   mrb_init_heap(mrb);
   mrb->c = (struct mrb_context*)mrb_malloc(mrb, sizeof(struct mrb_context));
