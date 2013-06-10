@@ -10,7 +10,7 @@
   */
 # include <limits.h>
 #endif
-#include <windows.h>
+//#include <windows.h>
 #include <string.h>
 #include "mruby.h"
 #include "mruby/array.h"
