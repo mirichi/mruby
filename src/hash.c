@@ -209,11 +209,11 @@ mrb_hash_set(mrb_state *mrb, mrb_value hash, mrb_value key, mrb_value val)
   h = RHASH_TBL(hash);
 
   if (!h) h = RHASH_TBL(hash) = kh_init(ht, mrb);
-  k = kh_get(ht, mrb, h, key);
-  if (k == kh_end(h)) {
+  k = kh_search(ht, mrb, h, key);
+  if (!kh_exist(h, k)) {
     /* expand */
     int ai = mrb_gc_arena_save(mrb);
-    k = kh_put(ht, mrb, h, KEY(key));
+    kh_write(ht, mrb, h, k, KEY(key));
     mrb_gc_arena_restore(mrb, ai);
     kh_value(h, k).n = kh_size(h)-1;
   }
