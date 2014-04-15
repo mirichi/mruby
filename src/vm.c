@@ -1892,6 +1892,8 @@ RETRY_TRY_BLOCK:
 
 #define OP_CMP(op) do {\
   int result;\
+  int opcode;\
+  int a2;\
   /* need to check if - is overridden */\
   switch (TYPES2(mrb_type(regs[a]),mrb_type(regs[a+1]))) {\
   case TYPES2(MRB_TT_FIXNUM,MRB_TT_FIXNUM):\
@@ -1909,52 +1911,87 @@ RETRY_TRY_BLOCK:
   default:\
     goto L_SEND;\
   }\
+  i = *++pc;\
+  opcode = GET_OPCODE(i);\
+  a2 = GETARG_A(i);\
   if (result) {\
-    SET_TRUE_VALUE(regs[a]);\
+    if (opcode == OP_JMPIF && a == a2) {\
+      pc += GETARG_sBx(i);\
+      i = *pc;\
+      opcode = GET_OPCODE(i);\
+      SET_TRUE_VALUE(regs[a]);\
+    }\
+    else if (opcode == OP_JMPNOT && a == a2) {\
+      NEXT;\
+    } \
+    else {\
+      SET_TRUE_VALUE(regs[a]);\
+    }\
   }\
   else {\
-    SET_FALSE_VALUE(regs[a]);\
+    if (opcode == OP_JMPNOT && a == a2) {\
+      pc += GETARG_sBx(i);\
+      i = *pc;\
+      opcode = GET_OPCODE(i);\
+      SET_FALSE_VALUE(regs[a]);\
+    }\
+    else if (opcode == OP_JMPIF && a == a2) {\
+      NEXT;\
+    }\
+    else {\
+      SET_FALSE_VALUE(regs[a]);\
+    }\
   }\
+  goto *optable[opcode];\
 } while(0)
 
     CASE(OP_EQ) {
       /* A B C  R(A) := R(A)<R(A+1) (Syms[B]=:==,C=1)*/
       int a = GETARG_A(i);
       if (mrb_obj_eq(mrb, regs[a], regs[a+1])) {
+        int opcode;
+        int a2;\
+        i = *++pc;
+        a2 = GETARG_A(i);\
+        opcode = GET_OPCODE(i);
+        if (opcode == OP_JMPIF && a == a2) {
+          pc += GETARG_sBx(i);
+          i = *pc;
+          opcode = GET_OPCODE(i);
+        }
+        else if (opcode == OP_JMPNOT && a == a2) {
+          NEXT;
+        }
         SET_TRUE_VALUE(regs[a]);
+        goto *optable[opcode];
       }
       else {
         OP_CMP(==);
       }
-      NEXT;
     }
 
     CASE(OP_LT) {
       /* A B C  R(A) := R(A)<R(A+1) (Syms[B]=:<,C=1)*/
       int a = GETARG_A(i);
       OP_CMP(<);
-      NEXT;
     }
 
     CASE(OP_LE) {
       /* A B C  R(A) := R(A)<=R(A+1) (Syms[B]=:<=,C=1)*/
       int a = GETARG_A(i);
       OP_CMP(<=);
-      NEXT;
     }
 
     CASE(OP_GT) {
       /* A B C  R(A) := R(A)<R(A+1) (Syms[B]=:<,C=1)*/
       int a = GETARG_A(i);
       OP_CMP(>);
-      NEXT;
     }
 
     CASE(OP_GE) {
       /* A B C  R(A) := R(A)<=R(A+1) (Syms[B]=:<=,C=1)*/
       int a = GETARG_A(i);
       OP_CMP(>=);
-      NEXT;
     }
 
     CASE(OP_ARRAY) {
