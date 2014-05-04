@@ -413,6 +413,17 @@ to_hash(mrb_state *mrb, mrb_value val)
     |:      optional                              Next argument of '|' and later are optional.
     ?:      optional given [mrb_bool]             true if preceding argument (optional) is given.
  */
+#define ARGC_CKECK do {\
+  if (argc <= i) {\
+    if (opt) {\
+      given = 0;\
+    }\
+    else {\
+      mrb_raise(mrb, E_ARGUMENT_ERROR, "wrong number of arguments");\
+    }\
+  }\
+} while(0);
+
 mrb_int
 mrb_get_args(mrb_state *mrb, const char *format, ...)
 {
@@ -423,6 +434,25 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
   int argc = mrb->c->ci->argc;
   mrb_bool opt = 0;
   mrb_bool given = 1;
+  static void *typetable[] = {
+&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_AMPERSAND,&&L_ERROR,
+&&L_ERROR,&&L_ERROR,&&L_ASTERISK,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_QUESTION,
+&&L_ERROR,&&L_A,    &&L_ERROR,&&L_C,    &&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_H,    &&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_S,    &&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_ERROR,&&L_a,    &&L_b,    &&L_ERROR,&&L_d,    &&L_ERROR,&&L_f,    &&L_ERROR,
+&&L_ERROR,&&L_i,    &&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_n,    &&L_o,
+&&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_s,    &&L_ERROR,&&L_ERROR,&&L_ERROR,&&L_ERROR,
+&&L_ERROR,&&L_ERROR,&&L_z,    &&L_ERROR,&&L_PIPE, &&L_ERROR,&&L_ERROR,&&L_ERROR
+};
+
 
   va_start(ap, format);
   if (argc < 0) {
@@ -431,38 +461,34 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
     argc = a->len;
     sp = a->ptr;
   }
-  while ((c = *format++)) {
-    switch (c) {
-    case '|': case '*': case '&': case '?':
-      break;
-    default:
-      if (argc <= i) {
-        if (opt) {
-          given = 0;
-        }
-        else {
-          mrb_raise(mrb, E_ARGUMENT_ERROR, "wrong number of arguments");
-        }
-      }
-      break;
-    }
-
-    switch (c) {
-    case 'o':
+  c = *format;
+  if (!c) {
+    goto L_END;
+  }
+  goto *typetable[c];
+  {
+    {
+L_o:
       {
         mrb_value *p;
 
+        ARGC_CKECK;
         p = va_arg(ap, mrb_value*);
         if (i < argc) {
           *p = *sp++;
           i++;
         }
       }
-      break;
-    case 'C':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_C:
       {
         mrb_value *p;
 
+        ARGC_CKECK;
         p = va_arg(ap, mrb_value*);
         if (i < argc) {
           mrb_value ss;
@@ -481,46 +507,66 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
           i++;
         }
       }
-      break;
-    case 'S':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_S:
       {
         mrb_value *p;
 
+        ARGC_CKECK;
         p = va_arg(ap, mrb_value*);
         if (i < argc) {
           *p = to_str(mrb, *sp++);
           i++;
         }
       }
-      break;
-    case 'A':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_A:
       {
         mrb_value *p;
 
+        ARGC_CKECK;
         p = va_arg(ap, mrb_value*);
         if (i < argc) {
           *p = to_ary(mrb, *sp++);
           i++;
         }
       }
-      break;
-    case 'H':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_H:
       {
         mrb_value *p;
 
+        ARGC_CKECK;
         p = va_arg(ap, mrb_value*);
         if (i < argc) {
           *p = to_hash(mrb, *sp++);
           i++;
         }
       }
-      break;
-    case 's':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_s:
       {
         mrb_value ss;
         char **ps = 0;
         mrb_int *pl = 0;
 
+        ARGC_CKECK;
         ps = va_arg(ap, char**);
         pl = va_arg(ap, mrb_int*);
         if (i < argc) {
@@ -530,12 +576,17 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
           i++;
         }
       }
-      break;
-    case 'z':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_z:
       {
         mrb_value ss;
         char **ps;
 
+        ARGC_CKECK;
         ps = va_arg(ap, char**);
         if (i < argc) {
           ss = to_str(mrb, *sp++);
@@ -543,14 +594,19 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
           i++;
         }
       }
-      break;
-    case 'a':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_a:
       {
         mrb_value aa;
         struct RArray *a;
         mrb_value **pb;
         mrb_int *pl;
 
+        ARGC_CKECK;
         pb = va_arg(ap, mrb_value**);
         pl = va_arg(ap, mrb_int*);
         if (i < argc) {
@@ -561,11 +617,16 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
           i++;
         }
       }
-      break;
-    case 'f':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_f:
       {
         mrb_float *p;
 
+        ARGC_CKECK;
         p = va_arg(ap, mrb_float*);
         if (i < argc) {
           *p = mrb_to_flo(mrb, *sp);
@@ -573,11 +634,16 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
           i++;
         }
       }
-      break;
-    case 'i':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_i:
       {
         mrb_int *p;
 
+        ARGC_CKECK;
         p = va_arg(ap, mrb_int*);
         if (i < argc) {
           switch (mrb_type(*sp)) {
@@ -605,22 +671,32 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
           i++;
         }
       }
-      break;
-    case 'b':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_b:
       {
         mrb_bool *boolp = va_arg(ap, mrb_bool*);
 
+        ARGC_CKECK;
         if (i < argc) {
           mrb_value b = *sp++;
           *boolp = mrb_test(b);
           i++;
         }
       }
-      break;
-    case 'n':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_n:
       {
         mrb_sym *symp;
 
+        ARGC_CKECK;
         symp = va_arg(ap, mrb_sym*);
         if (i < argc) {
           mrb_value ss;
@@ -639,12 +715,17 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
           i++;
         }
       }
-      break;
-    case 'd':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_d:
       {
         void** datap;
         struct mrb_data_type const* type;
 
+        ARGC_CKECK;
         datap = va_arg(ap, void**);
         type = va_arg(ap, struct mrb_data_type const*);
         if (i < argc) {
@@ -652,9 +733,12 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
           ++i;
         }
       }
-      break;
-
-    case '&':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_AMPERSAND:
       {
         mrb_value *p, *bp;
 
@@ -667,20 +751,31 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
         }
         *p = *bp;
       }
-      break;
-    case '|':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_PIPE:
       opt = 1;
-      break;
-    case '?':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_QUESTION:
       {
         mrb_bool *p;
 
         p = va_arg(ap, mrb_bool*);
         *p = given;
       }
-      break;
-
-    case '*':
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_ASTERISK:
       {
         mrb_value **var;
         mrb_int *pl;
@@ -700,12 +795,21 @@ mrb_get_args(mrb_state *mrb, const char *format, ...)
           *var = NULL;
         }
       }
-      break;
-    default:
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
+L_ERROR:
       mrb_raisef(mrb, E_ARGUMENT_ERROR, "invalid argument specifier %S", mrb_str_new(mrb, &c, 1));
-      break;
+      c = *++format;
+      if (!c) {
+        goto L_END;
+      }
+      goto *typetable[c];
     }
   }
+L_END:
   if (!c && argc > i) {
     mrb_raise(mrb, E_ARGUMENT_ERROR, "wrong number of arguments");
   }
